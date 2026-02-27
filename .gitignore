@@ -1,0 +1,23 @@
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+library.db
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.idea/
+*.iml
+.vscode/settings.json
+.DS_Store
