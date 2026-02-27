@@ -21,3 +21,8 @@ venv/
 *.iml
 .vscode/settings.json
 .DS_Store
+
+# Variables de entorno (no commitear secretos)
+.env
+.env.local
+.env.*.local

@@ -32,7 +32,8 @@ export interface LoanDTO {
 
 // ─── Base ───────────────────────────────────────────────────────────────────
 
-const BASE = '/api'
+/** Dominio/prefijo del API. Configurable con VITE_API_BASE_URL en .env */
+const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api'
 
 async function request<T>(
   path: string,
