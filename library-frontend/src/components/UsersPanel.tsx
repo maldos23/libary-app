@@ -102,7 +102,7 @@ export function UsersPanel() {
                 <label className="text-xs font-medium text-zinc-600">{label}</label>
                 <input
                   type={type}
-                  value={(form as Record<string, unknown>)[key] as string ?? ''}
+                  value={(form as unknown as Record<string, unknown>)[key] as string ?? ''}
                   onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
                   required
                   className="w-full px-3 py-1.5 border border-zinc-300 rounded text-sm bg-white focus:outline-none focus:ring-1 focus:ring-zinc-900"

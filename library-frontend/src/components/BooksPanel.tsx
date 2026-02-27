@@ -127,7 +127,7 @@ export function BooksPanel() {
                 <label className="text-xs font-medium text-zinc-600">{label}</label>
                 <input
                   type={type}
-                  value={(form as Record<string, unknown>)[key] as string ?? ''}
+                  value={(form as unknown as Record<string, unknown>)[key] as string ?? ''}
                   min={type === 'number' ? 1 : undefined}
                   onChange={e =>
                     setForm(f => ({
