@@ -1,0 +1,30 @@
+# Control de versiones
+.git
+.gitignore
+
+# Artefactos de build (se regeneran en la imagen)
+target/
+
+# Archivos de entorno y secretos locales
+*.env
+.env*
+*.local
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# Base de datos local
+*.db
+*.db-shm
+*.db-wal
+
+# Documentación y archivos de prueba
+*.md
+docs/
+
+# macOS
+.DS_Store
