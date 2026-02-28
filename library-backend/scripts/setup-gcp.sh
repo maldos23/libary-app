@@ -24,7 +24,7 @@ gcloud iam service-accounts describe "${SA_NAME}@${PROJECT_ID}.iam.gserviceaccou
 
 echo "▶ [3/4] Asignando roles IAM..."
 for ROLE in roles/compute.instanceAdmin.v1 roles/iam.serviceAccountUser \
-            roles/artifactregistry.writer roles/compute.securityAdmin; do
+            roles/artifactregistry.admin roles/compute.securityAdmin; do
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role="${ROLE}" --condition=None --quiet
