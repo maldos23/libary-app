@@ -1,20 +1,30 @@
 package com.library.resource;
 
+import java.util.List;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
 import com.library.dto.UserDTO;
 import com.library.entity.Loan;
 import com.library.entity.User;
 import com.library.mapper.EntityMapper;
+
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
-import jakarta.ws.rs.*;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import org.eclipse.microprofile.openapi.annotations.Operation;
-import org.eclipse.microprofile.openapi.annotations.tags.Tag;
-
-import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Resource REST para gestión de usuarios de la biblioteca.
@@ -24,6 +34,8 @@ import java.util.stream.Collectors;
 @Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Users", description = "Gestión de usuarios de la biblioteca")
 public class UserResource {
+
+    private static final Logger LOG = Logger.getLogger(UserResource.class.getName());
 
     @Inject
     EntityMapper mapper;
@@ -44,7 +56,7 @@ public class UserResource {
         User user = User.findById(id);
         if (user == null) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity("{\"error\":\"Usuario no encontrado\"}")
+                .entity(new ErrorResponse("Usuario no encontrado"))
                 .build();
         }
         return Response.ok(mapper.toUserDTO(user)).build();
@@ -57,13 +69,13 @@ public class UserResource {
         // Validar email único
         if (User.find("email", dto.email).firstResult() != null) {
             return Response.status(Response.Status.CONFLICT)
-                .entity("{\"error\":\"Ya existe un usuario con ese email\"}")
+                .entity(new ErrorResponse("Ya existe un usuario con ese email"))
                 .build();
         }
         // Validar documento único
         if (User.find("identificationDocument", dto.identificationDocument).firstResult() != null) {
             return Response.status(Response.Status.CONFLICT)
-                .entity("{\"error\":\"Ya existe un usuario con ese documento\"}")
+                .entity(new ErrorResponse("Ya existe un usuario con ese documento"))
                 .build();
         }
         User user = mapper.toUser(dto);
@@ -81,21 +93,21 @@ public class UserResource {
         User user = User.findById(id);
         if (user == null) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity("{\"error\":\"Usuario no encontrado\"}")
+                .entity(new ErrorResponse("Usuario no encontrado"))
                 .build();
         }
         // Validar que el nuevo email no esté en uso por otro usuario
         User emailOwner = User.find("email", dto.email).firstResult();
         if (emailOwner != null && !emailOwner.id.equals(id)) {
             return Response.status(Response.Status.CONFLICT)
-                .entity("{\"error\":\"El email ya está registrado por otro usuario\"}")
+                .entity(new ErrorResponse("El email ya está registrado por otro usuario"))
                 .build();
         }
         // Validar que el nuevo documento no esté en uso por otro usuario
         User docOwner = User.find("identificationDocument", dto.identificationDocument).firstResult();
         if (docOwner != null && !docOwner.id.equals(id)) {
             return Response.status(Response.Status.CONFLICT)
-                .entity("{\"error\":\"El documento ya está registrado por otro usuario\"}")
+                .entity(new ErrorResponse("El documento ya está registrado por otro usuario"))
                 .build();
         }
         mapper.updateUser(user, dto);
@@ -110,7 +122,7 @@ public class UserResource {
         User user = User.findById(id);
         if (user == null) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity("{\"error\":\"Usuario no encontrado\"}")
+                .entity(new ErrorResponse("Usuario no encontrado"))
                 .build();
         }
         // Restaurar el stock de los libros por cada préstamo activo del usuario

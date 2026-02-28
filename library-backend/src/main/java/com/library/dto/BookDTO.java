@@ -3,6 +3,8 @@ package com.library.dto;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 /**
  * DTO para transferir datos de un libro entre el cliente y la API.
@@ -13,12 +15,18 @@ public class BookDTO {
     public Long id;
 
     @NotBlank(message = "El título es obligatorio")
+    @Size(max = 255, message = "El título no puede superar 255 caracteres")
     public String title;
 
     @NotBlank(message = "El autor es obligatorio")
+    @Size(max = 255, message = "El autor no puede superar 255 caracteres")
     public String author;
 
     @NotBlank(message = "El ISBN es obligatorio")
+    // Acepta ISBN-10 e ISBN-13 con o sin guiones
+    @Pattern(regexp = "^[0-9]{9}[0-9Xx]$|^(?:[0-9]{3}-?)?[0-9]{1,5}-?[0-9]+-?[0-9Xx]$",
+             message = "Formato de ISBN inválido (use ISBN-10 o ISBN-13)")
+    @Size(max = 20, message = "El ISBN no puede superar 20 caracteres")
     public String isbn;
 
     @NotNull

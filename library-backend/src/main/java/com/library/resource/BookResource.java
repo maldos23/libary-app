@@ -1,20 +1,30 @@
 package com.library.resource;
 
+import java.util.List;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
 import com.library.dto.BookDTO;
 import com.library.entity.Book;
 import com.library.entity.Loan;
 import com.library.mapper.EntityMapper;
+
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
-import jakarta.ws.rs.*;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import org.eclipse.microprofile.openapi.annotations.Operation;
-import org.eclipse.microprofile.openapi.annotations.tags.Tag;
-
-import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Resource REST para gestión del catálogo de libros.
@@ -25,6 +35,8 @@ import java.util.stream.Collectors;
 @Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Books", description = "Gestión del catálogo de libros")
 public class BookResource {
+
+    private static final Logger LOG = Logger.getLogger(BookResource.class.getName());
 
     @Inject
     EntityMapper mapper;
@@ -45,7 +57,7 @@ public class BookResource {
         Book book = Book.findById(id);
         if (book == null) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity("{\"error\":\"Libro no encontrado\"}")
+                .entity(new ErrorResponse("Libro no encontrado"))
                 .build();
         }
         return Response.ok(mapper.toBookDTO(book)).build();
@@ -58,7 +70,7 @@ public class BookResource {
         // Validar ISBN único
         if (Book.find("isbn", dto.isbn).firstResult() != null) {
             return Response.status(Response.Status.CONFLICT)
-                .entity("{\"error\":\"Ya existe un libro con ese ISBN\"}")
+                .entity(new ErrorResponse("Ya existe un libro con ese ISBN"))
                 .build();
         }
         Book book = mapper.toBook(dto);
@@ -76,7 +88,7 @@ public class BookResource {
         Book book = Book.findById(id);
         if (book == null) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity("{\"error\":\"Libro no encontrado\"}")
+                .entity(new ErrorResponse("Libro no encontrado"))
                 .build();
         }
         mapper.updateBook(book, dto);
@@ -91,7 +103,7 @@ public class BookResource {
         Book book = Book.findById(id);
         if (book == null) {
             return Response.status(Response.Status.NOT_FOUND)
-                .entity("{\"error\":\"Libro no encontrado\"}")
+                .entity(new ErrorResponse("Libro no encontrado"))
                 .build();
         }
         // Liberar el contador de préstamos de los usuarios con préstamo activo

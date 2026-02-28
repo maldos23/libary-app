@@ -1,8 +1,11 @@
 package com.library.dto;
 
-import com.library.entity.Loan.LoanStatus;
-import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
+
+import com.library.entity.Loan.LoanStatus;
+
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 /**
  * DTO para transferir datos de un préstamo.
@@ -20,9 +23,11 @@ public class LoanDTO {
 
     // IDs de relaciones (usados en creación/respuesta)
     @NotNull(message = "El ID del usuario es obligatorio")
+    @Positive(message = "El ID del usuario debe ser un número positivo")
     public Long userId;
 
     @NotNull(message = "El ID del libro es obligatorio")
+    @Positive(message = "El ID del libro debe ser un número positivo")
     public Long bookId;
 
     // Campos de lectura (nombre del usuario y título del libro)
