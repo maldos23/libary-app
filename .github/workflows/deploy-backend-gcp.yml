@@ -1,0 +1,103 @@
+name: Deploy Quarkus to Compute Engine
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "library-backend/**"
+      - ".github/workflows/deploy-backend-gcp.yml"
+
+env:
+  IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/library/library-backend
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCP
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      # Crea el repositorio de Artifact Registry si no existe todavía
+      - name: Create Artifact Registry repository (if needed)
+        run: |
+          gcloud artifacts repositories describe library \
+            --location=us-central1 \
+            --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null \
+          || gcloud artifacts repositories create library \
+              --repository-format=docker \
+              --location=us-central1 \
+              --project=${{ secrets.GCP_PROJECT_ID }} \
+              --description="Library backend Docker images"
+
+      - name: Build and Push Docker Image
+        run: |
+          docker build \
+            -t ${{ env.IMAGE }}:${{ github.sha }} \
+            -t ${{ env.IMAGE }}:latest \
+            ./library-backend
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
+
+      # Crea la regla de firewall para el puerto 8080 si no existe
+      - name: Create firewall rule (if needed)
+        run: |
+          gcloud compute firewall-rules describe allow-library-8080 \
+            --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null \
+          || gcloud compute firewall-rules create allow-library-8080 \
+              --project=${{ secrets.GCP_PROJECT_ID }} \
+              --direction=INGRESS \
+              --action=ALLOW \
+              --rules=tcp:8080 \
+              --source-ranges=0.0.0.0/0 \
+              --target-tags=library-backend \
+              --description="Allow port 8080 for library backend"
+
+      # Si la VM no existe la crea desde cero como e2-small con Container-Optimized OS
+      - name: Create VM if not exists
+        run: |
+          gcloud compute instances describe ${{ secrets.VM_NAME }} \
+            --zone=${{ secrets.VM_ZONE }} \
+            --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null \
+          || gcloud compute instances create-with-container ${{ secrets.VM_NAME }} \
+              --project=${{ secrets.GCP_PROJECT_ID }} \
+              --zone=${{ secrets.VM_ZONE }} \
+              --machine-type=e2-small \
+              --image-family=cos-stable \
+              --image-project=cos-cloud \
+              --boot-disk-size=20GB \
+              --tags=library-backend \
+              --container-image=${{ env.IMAGE }}:${{ github.sha }} \
+              --container-env=PORT=8080,DB_PATH=/data/library.db \
+              --container-mount-host-path=mount-path=/data,host-path=/mnt/library-data,mode=rw \
+              --container-restart-policy=always \
+              --scopes=https://www.googleapis.com/auth/cloud-platform
+
+      # Si la VM ya existía, actualiza solo la imagen del contenedor (sin recrear la VM)
+      - name: Deploy to VM via SSH (gcloud)
+        run: |
+          gcloud compute instances update-container ${{ secrets.VM_NAME }} \
+            --zone=${{ secrets.VM_ZONE }} \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --container-image=${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Show external IP
+        run: |
+          IP=$(gcloud compute instances describe ${{ secrets.VM_NAME }} \
+            --zone=${{ secrets.VM_ZONE }} \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+          echo "✅ Deployed image: ${{ env.IMAGE }}:${{ github.sha }}"
+          echo "🌐 External IP   : ${IP}"
+          echo "🔗 API endpoint  : http://${IP}:8080/api/books"

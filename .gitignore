@@ -26,3 +26,7 @@ venv/
 .env
 .env.local
 .env.*.local
+
+# Claves de Service Account GCP (nunca commitear)
+gcp-sa-key.json
+*-sa-key.json
