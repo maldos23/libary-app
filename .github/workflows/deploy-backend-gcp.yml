@@ -15,6 +15,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
+    # Sin SSH — el workflow solo actualiza metadatos de la VM.
+    # La VM tiene un systemd timer que lee 'docker-image' y redespliega sola.
 
     steps:
       - name: Checkout code
@@ -28,13 +30,13 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # Valida la zona antes de intentar cualquier operación en Compute Engine
+      # Falla rápido si VM_ZONE es inválida (ej. escribieron región en vez de zona)
       - name: Validate zone
         run: |
           gcloud compute zones describe ${{ secrets.VM_ZONE }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
             --quiet > /dev/null
-          echo "✅ Zone ${{ secrets.VM_ZONE }} is valid"
+          echo "Zone ${{ secrets.VM_ZONE }} is valid"
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
@@ -74,13 +76,15 @@ jobs:
               --target-tags=library-backend \
               --description="Allow port 8080 for library backend"
 
-      # Crea la VM (e2-small, COS) solo en el primer deploy
+      # Primer deploy: crea la VM con el startup script incrustado.
+      # El startup script instala un systemd timer que hace polling de
+      # la metadata 'docker-image' y redespliega el contenedor sin SSH.
       - name: Create VM (first deploy only)
         run: |
           if gcloud compute instances describe ${{ secrets.VM_NAME }} \
                --zone=${{ secrets.VM_ZONE }} \
                --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null; then
-            echo "VM ya existe, se omite la creación"
+            echo "VM ya existe — se actualiza solo la metadata."
           else
             gcloud compute instances create ${{ secrets.VM_NAME }} \
               --project=${{ secrets.GCP_PROJECT_ID }} \
@@ -91,44 +95,23 @@ jobs:
               --boot-disk-size=20GB \
               --tags=library-backend \
               --scopes=cloud-platform \
-              --metadata=enable-oslogin=TRUE,google-logging-enabled=TRUE
-            echo "Esperando a que la VM esté lista..."
+              --metadata=google-logging-enabled=TRUE \
+              --metadata-from-file=startup-script=library-backend/scripts/vm-startup.sh
+            echo "Esperando a que la VM este lista..."
             sleep 30
           fi
 
-      # Despliega el contenedor en la VM vía SSH (funciona tanto para creación como actualización)
-      - name: Deploy container via SSH
+      # Unico paso de "deploy": escribe la nueva imagen en la metadata.
+      # La VM la detectara sola en ≤60 s y reiniciara el contenedor.
+      # No se genera ni transmite ninguna clave SSH.
+      - name: Update image metadata on VM
         run: |
-          gcloud compute ssh ${{ secrets.VM_NAME }} \
+          gcloud compute instances add-metadata ${{ secrets.VM_NAME }} \
             --zone=${{ secrets.VM_ZONE }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
-            --tunnel-through-iap \
-            --quiet \
-            --command="
-              set -e
-              # Autenticar Docker con Artifact Registry usando la SA de la VM
-              gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
-
-              # Detener y eliminar contenedor anterior si existe
-              docker stop library-backend 2>/dev/null || true
-              docker rm   library-backend 2>/dev/null || true
-
-              # Crear directorio de datos persistente para SQLite
-              mkdir -p /mnt/library-data
-
-              # Descargar y ejecutar la nueva imagen
-              docker pull ${{ env.IMAGE }}:${{ github.sha }}
-              docker run -d \
-                --name library-backend \
-                --restart=always \
-                -p 8080:8080 \
-                -e PORT=8080 \
-                -e DB_PATH=/data/library.db \
-                -v /mnt/library-data:/data \
-                ${{ env.IMAGE }}:${{ github.sha }}
-
-              docker ps --filter name=library-backend --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
-            "
+            --metadata=docker-image=${{ env.IMAGE }}:${{ github.sha }}
+          echo "Metadata 'docker-image' actualizada."
+          echo "La VM redesplegara el contenedor en los proximos 60 s."
 
       - name: Show external IP
         run: |
@@ -136,6 +119,6 @@ jobs:
             --zone=${{ secrets.VM_ZONE }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
             --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
-          echo "✅ Deployed : ${{ env.IMAGE }}:${{ github.sha }}"
-          echo "🌐 External IP: ${IP}"
-          echo "🔗 API        : http://${IP}:8080/api/books"
+          echo "Deployed : ${{ env.IMAGE }}:${{ github.sha }}"
+          echo "External IP: ${IP}"
+          echo "API        : http://${IP}:8080/api/books"
