@@ -76,9 +76,8 @@ jobs:
               --target-tags=library-backend \
               --description="Allow port 8080 for library backend"
 
-      # Primer deploy: crea la VM con el startup script incrustado.
-      # El startup script instala un systemd timer que hace polling de
-      # la metadata 'docker-image' y redespliega el contenedor sin SSH.
+      # Primer deploy: crea la VM pasando docker-image en los mismos metadatos
+      # del startup-script para que el contenedor arranque en el primer boot.
       - name: Create VM (first deploy only)
         run: |
           if gcloud compute instances describe ${{ secrets.VM_NAME }} \
@@ -95,25 +94,47 @@ jobs:
               --boot-disk-size=20GB \
               --tags=library-backend \
               --scopes=cloud-platform \
-              --metadata=google-logging-enabled=TRUE \
+              --metadata=google-logging-enabled=TRUE,docker-image=${{ env.IMAGE }}:${{ github.sha }} \
               --metadata-from-file=startup-script=library-backend/scripts/vm-startup.sh
-            echo "Esperando a que la VM este lista..."
-            sleep 30
+            echo "VM creada. Esperando arranque inicial (90 s)..."
+            sleep 90
           fi
 
-      # Unico paso de "deploy": escribe la nueva imagen en la metadata.
-      # La VM la detectara sola en ≤60 s y reiniciara el contenedor.
-      # No se genera ni transmite ninguna clave SSH.
+      # Para deploys posteriores: solo actualiza la imagen en metadata.
+      # El timer de la VM (cada 60 s) detecta el cambio y reinicia el contenedor.
       - name: Update image metadata on VM
         run: |
           gcloud compute instances add-metadata ${{ secrets.VM_NAME }} \
             --zone=${{ secrets.VM_ZONE }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
             --metadata=docker-image=${{ env.IMAGE }}:${{ github.sha }}
-          echo "Metadata 'docker-image' actualizada."
-          echo "La VM redesplegara el contenedor en los proximos 60 s."
+          echo "Metadata 'docker-image' actualizada -> ${{ github.sha }}"
+
+      # Espera hasta que el endpoint /api/books responda (max 3 min)
+      - name: Wait for API to be reachable
+        run: |
+          IP=$(gcloud compute instances describe ${{ secrets.VM_NAME }} \
+            --zone=${{ secrets.VM_ZONE }} \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+          echo "IP externa: ${IP}"
+          echo "Esperando que http://${IP}:8080/api/books responda..."
+          for i in $(seq 1 18); do
+            STATUS=$(curl -o /dev/null -s -w "%{http_code}" \
+              --max-time 5 "http://${IP}:8080/api/books" || echo "000")
+            echo "  Intento ${i}/18 — HTTP ${STATUS}"
+            if [ "${STATUS}" = "200" ]; then
+              echo "API lista!"
+              echo "URL: http://${IP}:8080/api/books"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "AVISO: La API no respondio en 3 min. Revisa los logs de la VM."
+          exit 1
 
       - name: Show external IP
+        if: always()
         run: |
           IP=$(gcloud compute instances describe ${{ secrets.VM_NAME }} \
             --zone=${{ secrets.VM_ZONE }} \
