@@ -64,7 +64,7 @@ jobs:
             --cpu=1 \
             --min-instances=0 \
             --max-instances=2 \
-            --set-env-vars=PORT=8080,DB_PATH=/tmp/library.db \
+            --set-env-vars=DB_PATH=/tmp/library.db \
             --allow-unauthenticated \
             --quiet
 
