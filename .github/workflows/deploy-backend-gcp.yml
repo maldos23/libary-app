@@ -1,4 +1,4 @@
-name: Deploy Quarkus to Compute Engine
+name: Deploy Quarkus to Cloud Run
 
 on:
   push:
@@ -9,14 +9,13 @@ on:
 
 env:
   REGION: us-central1
+  SERVICE: library-backend
   IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/library/library-backend
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
-    # Sin SSH — el workflow solo actualiza metadatos de la VM.
-    # La VM tiene un systemd timer que lee 'docker-image' y redespliega sola.
 
     steps:
       - name: Checkout code
@@ -30,18 +29,9 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # Falla rápido si VM_ZONE es inválida (ej. escribieron región en vez de zona)
-      - name: Validate zone
-        run: |
-          gcloud compute zones describe ${{ secrets.VM_ZONE }} \
-            --project=${{ secrets.GCP_PROJECT_ID }} \
-            --quiet > /dev/null
-          echo "Zone ${{ secrets.VM_ZONE }} is valid"
-
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
-      # Crea el repositorio de Artifact Registry si no existe
       - name: Create Artifact Registry repository (if needed)
         run: |
           gcloud artifacts repositories describe library \
@@ -62,84 +52,28 @@ jobs:
           docker push ${{ env.IMAGE }}:${{ github.sha }}
           docker push ${{ env.IMAGE }}:latest
 
-      # Abre el puerto 8080 solo si la regla no existe todavía
-      - name: Create firewall rule (if needed)
+      - name: Deploy to Cloud Run
         run: |
-          gcloud compute firewall-rules describe allow-library-8080 \
-            --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null \
-          || gcloud compute firewall-rules create allow-library-8080 \
-              --project=${{ secrets.GCP_PROJECT_ID }} \
-              --direction=INGRESS \
-              --action=ALLOW \
-              --rules=tcp:8080 \
-              --source-ranges=0.0.0.0/0 \
-              --target-tags=library-backend \
-              --description="Allow port 8080 for library backend"
-
-      # Primer deploy: crea la VM pasando docker-image en los mismos metadatos
-      # del startup-script para que el contenedor arranque en el primer boot.
-      - name: Create VM (first deploy only)
-        run: |
-          if gcloud compute instances describe ${{ secrets.VM_NAME }} \
-               --zone=${{ secrets.VM_ZONE }} \
-               --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null; then
-            echo "VM ya existe — se actualiza solo la metadata."
-          else
-            gcloud compute instances create ${{ secrets.VM_NAME }} \
-              --project=${{ secrets.GCP_PROJECT_ID }} \
-              --zone=${{ secrets.VM_ZONE }} \
-              --machine-type=e2-small \
-              --image-family=debian-12 \
-              --image-project=debian-cloud \
-              --boot-disk-size=20GB \
-              --tags=library-backend \
-              --scopes=cloud-platform \
-              --metadata=google-logging-enabled=TRUE,docker-image=${{ env.IMAGE }}:${{ github.sha }} \
-              --metadata-from-file=startup-script=library-backend/scripts/vm-startup.sh
-            echo "VM creada. Esperando arranque inicial (90 s)..."
-            sleep 90
-          fi
-
-      # Para deploys posteriores: solo actualiza la imagen en metadata.
-      # El timer de la VM (cada 60 s) detecta el cambio y reinicia el contenedor.
-      - name: Update image metadata on VM
-        run: |
-          gcloud compute instances add-metadata ${{ secrets.VM_NAME }} \
-            --zone=${{ secrets.VM_ZONE }} \
+          gcloud run deploy ${{ env.SERVICE }} \
+            --image=${{ env.IMAGE }}:${{ github.sha }} \
+            --region=${{ env.REGION }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
-            --metadata=docker-image=${{ env.IMAGE }}:${{ github.sha }}
-          echo "Metadata 'docker-image' actualizada -> ${{ github.sha }}"
+            --platform=managed \
+            --port=8080 \
+            --memory=512Mi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=2 \
+            --set-env-vars=PORT=8080,DB_PATH=/tmp/library.db \
+            --allow-unauthenticated \
+            --quiet
 
-      # Espera hasta que el endpoint /api/books responda (max 3 min)
-      - name: Wait for API to be reachable
+      - name: Show service URL
         run: |
-          IP=$(gcloud compute instances describe ${{ secrets.VM_NAME }} \
-            --zone=${{ secrets.VM_ZONE }} \
+          URL=$(gcloud run services describe ${{ env.SERVICE }} \
+            --region=${{ env.REGION }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
-            --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
-          echo "IP externa: ${IP}"
-          echo "Esperando que http://${IP}:8080/api/books responda..."
-          for i in $(seq 1 18); do
-            STATUS=$(curl -o /dev/null -s -w "%{http_code}" \
-              --max-time 5 "http://${IP}:8080/api/books" || echo "000")
-            echo "  Intento ${i}/18 — HTTP ${STATUS}"
-            if [ "${STATUS}" = "200" ]; then
-              echo "API lista!"
-              echo "URL: http://${IP}:8080/api/books"
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "AVISO: La API no respondio en 3 min. Revisa los logs de la VM."
-          exit 1
-
-      - name: Show external IP
-        if: always()
-        run: |
-          IP=$(gcloud compute instances describe ${{ secrets.VM_NAME }} \
-            --zone=${{ secrets.VM_ZONE }} \
-            --project=${{ secrets.GCP_PROJECT_ID }} \
-            --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+            --format='value(status.url)')
           echo "Deployed : ${{ env.IMAGE }}:${{ github.sha }}"
-          echo "External IP: ${IP}"
-          echo "API        : http://${IP}:8080/api/books"
+          echo "Service URL: ${URL}"
+          echo "API        : ${URL}/api/books"

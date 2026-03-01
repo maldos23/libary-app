@@ -14,7 +14,7 @@ KEY_FILE="gcp-sa-key.json"
 
 echo "▶ [1/5] Activando APIs..."
 gcloud services enable \
-  compute.googleapis.com \
+  run.googleapis.com \
   artifactregistry.googleapis.com \
   iam.googleapis.com \
   cloudresourcemanager.googleapis.com \
@@ -27,27 +27,25 @@ gcloud iam service-accounts describe "${SA_NAME}@${PROJECT_ID}.iam.gserviceaccou
     --project="${PROJECT_ID}" --display-name="GitHub Actions Deployer"
 
 echo "▶ [3/5] Asignando roles al SA del workflow..."
-# Roles para crear/gestionar la VM y empujar imágenes a Artifact Registry.
-# NO se necesitan roles de SSH/IAP porque el deploy es por metadata de instancia.
+# Cloud Run Admin: crear/actualizar servicios
+# Artifact Registry Admin: crear repo y push de imagenes
+# Service Account User: para que Cloud Run pueda invocar la SA por defecto
 for ROLE in \
-  roles/compute.instanceAdmin.v1 \
-  roles/iam.serviceAccountUser \
+  roles/run.admin \
   roles/artifactregistry.admin \
-  roles/compute.securityAdmin; do
+  roles/iam.serviceAccountUser; do
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role="${ROLE}" --condition=None --quiet
 done
 
-echo "▶ [4/5] Otorgando a la SA por defecto de Compute Engine acceso de lectura a Artifact Registry..."
-# La VM usa la SA por defecto ({PROJECT_NUMBER}-compute@developer.gserviceaccount.com)
-# con scope cloud-platform para hacer docker pull desde Artifact Registry.
-PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')
-COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+echo "▶ [4/5] Permitiendo invocaciones publicas en Cloud Run..."
+# Necesario para que la API sea accesible sin autenticacion
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-  --member="serviceAccount:${COMPUTE_SA}" \
-  --role="roles/artifactregistry.reader" \
-  --condition=None --quiet
+  --member="allUsers" \
+  --role="roles/run.invoker" \
+  --condition=None --quiet 2>/dev/null \
+  || echo "  (Esta politica puede requerir permisos de org — omitida)"
 
 echo "▶ [5/5] Generando clave JSON..."
 gcloud iam service-accounts keys create "${KEY_FILE}" \
@@ -61,7 +59,7 @@ echo " https://github.com/maldos23/libary-app/settings/secrets/actions"
 echo ""
 echo " GCP_PROJECT_ID = ${PROJECT_ID}"
 echo " GCP_SA_KEY     = \$(cat ${KEY_FILE} | base64 | tr -d '\\n')"
-echo " VM_NAME        = library-backend"
-echo " VM_ZONE        = us-central1-a"
 echo "════════════════════════════════════════════════════════════"
 echo "⚠️  No subas '${KEY_FILE}' al repositorio."
+echo ""
+echo " Ya no se necesitan VM_NAME ni VM_ZONE (Cloud Run no usa VMs)."
