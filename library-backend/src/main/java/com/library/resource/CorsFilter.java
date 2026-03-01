@@ -1,16 +1,16 @@
 package com.library.resource;
 
+import java.util.Arrays;
+import java.util.Set;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.Provider;
-
-import java.util.Arrays;
-import java.util.Set;
-import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 /**
  * Filtro CORS manual que reemplaza la configuración declarativa de Quarkus.
