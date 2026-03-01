@@ -52,58 +52,13 @@ jobs:
           docker push ${{ env.IMAGE }}:${{ github.sha }}
           docker push ${{ env.IMAGE }}:latest
 
-      - name: Enable Cloud SQL Admin API
-        run: |
-          gcloud services enable sqladmin.googleapis.com \
-            --project=${{ secrets.GCP_PROJECT_ID }} --quiet
-
-          # Asegurar que el SA del workflow tenga permiso de administrar Cloud SQL
-          SA_EMAIL=$(gcloud config get-value account 2>/dev/null)
-          gcloud projects add-iam-policy-binding ${{ secrets.GCP_PROJECT_ID }} \
-            --member="serviceAccount:${SA_EMAIL}" \
-            --role="roles/cloudsql.admin" \
-            --condition=None --quiet 2>/dev/null || true
-
-      - name: Create Cloud SQL instance + DB + user (if not exist)
-        run: |
-          # CLOUD_SQL_INSTANCE = PROJECT:REGION:INSTANCE_NAME
-          INSTANCE_NAME=$(echo "${{ secrets.CLOUD_SQL_INSTANCE }}" | cut -d: -f3)
-
-          # Crear instancia (db-f1-micro ~$10/mes; idempotente)
-          if ! gcloud sql instances describe "${INSTANCE_NAME}" \
-               --project=${{ secrets.GCP_PROJECT_ID }} --quiet 2>/dev/null; then
-            echo "Creando instancia Cloud SQL: ${INSTANCE_NAME} …"
-            gcloud sql instances create "${INSTANCE_NAME}" \
-              --database-version=MYSQL_8_0 \
-              --tier=db-f1-micro \
-              --region=${{ env.REGION }} \
-              --project=${{ secrets.GCP_PROJECT_ID }} \
-              --quiet
-            echo "Instancia creada."
-          else
-            echo "Instancia ${INSTANCE_NAME} ya existe."
-          fi
-
-          # Crear base de datos
-          gcloud sql databases create "${{ secrets.DB_NAME }}" \
-            --instance="${INSTANCE_NAME}" \
-            --project=${{ secrets.GCP_PROJECT_ID }} --quiet 2>/dev/null || true
-
-          # Crear usuario
-          gcloud sql users create "${{ secrets.DB_USER }}" \
-            --instance="${INSTANCE_NAME}" \
-            --password="${{ secrets.DB_PASS }}" \
-            --project=${{ secrets.GCP_PROJECT_ID }} --quiet 2>/dev/null || true
-
-      - name: Grant Cloud SQL Client role to Cloud Run SA
-        run: |
-          PROJECT_NUMBER=$(gcloud projects describe ${{ secrets.GCP_PROJECT_ID }} --format='value(projectNumber)')
-          SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-          gcloud projects add-iam-policy-binding ${{ secrets.GCP_PROJECT_ID }} \
-            --member="serviceAccount:${SA}" \
-            --role="roles/cloudsql.client" \
-            --condition=None \
-            --quiet 2>/dev/null || true
+      # ── Prerequisito manual (una sola vez en GCP Console) ─────────────────
+      # 1. Habilitar API: APIs y servicios → sqladmin.googleapis.com
+      # 2. Crear instancia Cloud SQL MySQL 8 (db-f1-micro, us-central1)
+      # 3. Crear DB "library" y usuario con contraseña
+      # 4. IAM → SA github-actions-deployer: rol "Cloud SQL Admin"
+      # 5. IAM → SA <número>-compute@developer: rol "Cloud SQL Client"
+      # ──────────────────────────────────────────────────────────────────────
 
       - name: Deploy to Cloud Run
         run: |
