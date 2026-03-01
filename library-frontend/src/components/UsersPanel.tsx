@@ -67,16 +67,16 @@ export function UsersPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-zinc-900">Usuarios</h2>
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-zinc-900 truncate">Usuarios</h2>
           <p className="text-sm text-zinc-500 mt-0.5">{filtered.length} de {users.length} registros</p>
         </div>
         <button
           onClick={openCreate}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 text-white text-sm font-medium rounded hover:bg-zinc-700 transition-colors"
+          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 text-white text-sm font-medium rounded hover:bg-zinc-700 transition-colors"
         >
-          <Plus size={14} /> Agregar
+          <Plus size={14} /> <span className="hidden xs:inline">Agregar</span>
         </button>
       </div>
 
@@ -92,7 +92,7 @@ export function UsersPanel() {
           <h3 className="text-sm font-semibold text-zinc-800">
             {editing ? 'Editar usuario' : 'Nuevo usuario'}
           </h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
               { label: 'Nombre completo', key: 'name', type: 'text' },
               { label: 'Documento', key: 'identificationDocument', type: 'text' },
@@ -142,8 +142,8 @@ export function UsersPanel() {
       {loading ? (
         <p className="text-sm text-zinc-400">Cargando…</p>
       ) : (
-        <div className="border border-zinc-200 rounded overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="border border-zinc-200 rounded overflow-x-auto">
+          <table className="w-full min-w-[580px] text-sm">
             <thead className="bg-zinc-50 border-b border-zinc-200">
               <tr>
                 {['ID', 'Nombre', 'Documento', 'Email', 'Préstamos activos', ''].map(h => (

@@ -97,16 +97,16 @@ export function LoansPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-zinc-900">Préstamos</h2>
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-zinc-900 truncate">Préstamos</h2>
           <p className="text-sm text-zinc-500 mt-0.5">{filtered.length} de {loans.length} registros</p>
         </div>
         <button
           onClick={() => { setShowForm(true); setUserQuery(''); setBookQuery(''); setForm(EMPTY_LOAN) }}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 text-white text-sm font-medium rounded hover:bg-zinc-700 transition-colors"
+          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 text-white text-sm font-medium rounded hover:bg-zinc-700 transition-colors"
         >
-          <Plus size={14} /> Nuevo préstamo
+          <Plus size={14} /> <span className="hidden sm:inline">Nuevo préstamo</span><span className="sm:hidden">Nuevo</span>
         </button>
       </div>
 
@@ -120,7 +120,7 @@ export function LoansPanel() {
       {showForm && (
         <form onSubmit={handleSubmit} className="border border-zinc-200 rounded p-5 space-y-4 bg-zinc-50">
           <h3 className="text-sm font-semibold text-zinc-800">Registrar préstamo</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-medium text-zinc-600">Usuario</label>
               <div className="relative">
@@ -214,8 +214,8 @@ export function LoansPanel() {
       {loading ? (
         <p className="text-sm text-zinc-400">Cargando…</p>
       ) : (
-        <div className="border border-zinc-200 rounded overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="border border-zinc-200 rounded overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-zinc-50 border-b border-zinc-200">
               <tr>
                 {['ID', 'Usuario', 'Libro', 'Fecha préstamo', 'Fecha devolución', 'Estado', ''].map(h => (
