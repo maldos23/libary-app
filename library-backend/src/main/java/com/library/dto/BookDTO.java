@@ -23,9 +23,15 @@ public class BookDTO {
     public String author;
 
     @NotBlank(message = "El ISBN es obligatorio")
-    // Acepta ISBN-10 e ISBN-13 con o sin guiones
-    @Pattern(regexp = "^[0-9]{9}[0-9Xx]$|^(?:[0-9]{3}-?)?[0-9]{1,5}-?[0-9]+-?[0-9Xx]$",
-             message = "Formato de ISBN inválido (use ISBN-10 o ISBN-13)")
+    // ISBN-13 sin guiones: 13 dígitos
+    // ISBN-13 con guiones: NNN-N…-N…-N…-N  (ej. 978-84-206-0000-1)
+    // ISBN-10 sin guiones: 9 dígitos + dígito/X
+    // ISBN-10 con guiones: N…-N…-N…-N/X    (ej. 0-13-235088-4)
+    @Pattern(regexp = "^[0-9]{13}$"
+                    + "|^[0-9]{9}[0-9Xx]$"
+                    + "|^[0-9]{3}-[0-9]{1,5}-[0-9]{1,7}-[0-9]{1,7}-[0-9Xx]$"
+                    + "|^[0-9]{1,5}-[0-9]{1,7}-[0-9]{1,7}-[0-9Xx]$",
+             message = "Formato de ISBN inválido (use ISBN-10 o ISBN-13, con o sin guiones)")
     @Size(max = 20, message = "El ISBN no puede superar 20 caracteres")
     public String isbn;
 
