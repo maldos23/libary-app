@@ -8,6 +8,7 @@ on:
       - ".github/workflows/deploy-backend-gcp.yml"
 
 env:
+  REGION: us-central1
   IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/library/library-backend
 
 jobs:
@@ -27,22 +28,30 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker for GCP
-        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+      # Valida la zona antes de intentar cualquier operación en Compute Engine
+      - name: Validate zone
+        run: |
+          gcloud compute zones describe ${{ secrets.VM_ZONE }} \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --quiet > /dev/null
+          echo "✅ Zone ${{ secrets.VM_ZONE }} is valid"
 
-      # Crea el repositorio de Artifact Registry si no existe todavía
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      # Crea el repositorio de Artifact Registry si no existe
       - name: Create Artifact Registry repository (if needed)
         run: |
           gcloud artifacts repositories describe library \
-            --location=us-central1 \
+            --location=${{ env.REGION }} \
             --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null \
           || gcloud artifacts repositories create library \
               --repository-format=docker \
-              --location=us-central1 \
+              --location=${{ env.REGION }} \
               --project=${{ secrets.GCP_PROJECT_ID }} \
               --description="Library backend Docker images"
 
-      - name: Build and Push Docker Image
+      - name: Build and Push Docker image
         run: |
           docker build \
             -t ${{ env.IMAGE }}:${{ github.sha }} \
@@ -51,7 +60,7 @@ jobs:
           docker push ${{ env.IMAGE }}:${{ github.sha }}
           docker push ${{ env.IMAGE }}:latest
 
-      # Crea la regla de firewall para el puerto 8080 si no existe
+      # Abre el puerto 8080 solo si la regla no existe todavía
       - name: Create firewall rule (if needed)
         run: |
           gcloud compute firewall-rules describe allow-library-8080 \
@@ -65,13 +74,15 @@ jobs:
               --target-tags=library-backend \
               --description="Allow port 8080 for library backend"
 
-      # Si la VM no existe la crea desde cero como e2-small con Container-Optimized OS
-      - name: Create VM if not exists
+      # Crea la VM (e2-small, COS) solo en el primer deploy
+      - name: Create VM (first deploy only)
         run: |
-          gcloud compute instances describe ${{ secrets.VM_NAME }} \
-            --zone=${{ secrets.VM_ZONE }} \
-            --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null \
-          || gcloud compute instances create-with-container ${{ secrets.VM_NAME }} \
+          if gcloud compute instances describe ${{ secrets.VM_NAME }} \
+               --zone=${{ secrets.VM_ZONE }} \
+               --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null; then
+            echo "VM ya existe, se omite la creación"
+          else
+            gcloud compute instances create ${{ secrets.VM_NAME }} \
               --project=${{ secrets.GCP_PROJECT_ID }} \
               --zone=${{ secrets.VM_ZONE }} \
               --machine-type=e2-small \
@@ -79,19 +90,45 @@ jobs:
               --image-project=cos-cloud \
               --boot-disk-size=20GB \
               --tags=library-backend \
-              --container-image=${{ env.IMAGE }}:${{ github.sha }} \
-              --container-env=PORT=8080,DB_PATH=/data/library.db \
-              --container-mount-host-path=mount-path=/data,host-path=/mnt/library-data,mode=rw \
-              --container-restart-policy=always \
-              --scopes=https://www.googleapis.com/auth/cloud-platform
+              --scopes=cloud-platform \
+              --metadata=enable-oslogin=TRUE,google-logging-enabled=TRUE
+            echo "Esperando a que la VM esté lista..."
+            sleep 30
+          fi
 
-      # Si la VM ya existía, actualiza solo la imagen del contenedor (sin recrear la VM)
-      - name: Deploy to VM via SSH (gcloud)
+      # Despliega el contenedor en la VM vía SSH (funciona tanto para creación como actualización)
+      - name: Deploy container via SSH
         run: |
-          gcloud compute instances update-container ${{ secrets.VM_NAME }} \
+          gcloud compute ssh ${{ secrets.VM_NAME }} \
             --zone=${{ secrets.VM_ZONE }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
-            --container-image=${{ env.IMAGE }}:${{ github.sha }}
+            --tunnel-through-iap \
+            --quiet \
+            --command="
+              set -e
+              # Autenticar Docker con Artifact Registry usando la SA de la VM
+              gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+              # Detener y eliminar contenedor anterior si existe
+              docker stop library-backend 2>/dev/null || true
+              docker rm   library-backend 2>/dev/null || true
+
+              # Crear directorio de datos persistente para SQLite
+              mkdir -p /mnt/library-data
+
+              # Descargar y ejecutar la nueva imagen
+              docker pull ${{ env.IMAGE }}:${{ github.sha }}
+              docker run -d \
+                --name library-backend \
+                --restart=always \
+                -p 8080:8080 \
+                -e PORT=8080 \
+                -e DB_PATH=/data/library.db \
+                -v /mnt/library-data:/data \
+                ${{ env.IMAGE }}:${{ github.sha }}
+
+              docker ps --filter name=library-backend --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+            "
 
       - name: Show external IP
         run: |
@@ -99,6 +136,6 @@ jobs:
             --zone=${{ secrets.VM_ZONE }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
             --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
-          echo "✅ Deployed image: ${{ env.IMAGE }}:${{ github.sha }}"
-          echo "🌐 External IP   : ${IP}"
-          echo "🔗 API endpoint  : http://${IP}:8080/api/books"
+          echo "✅ Deployed : ${{ env.IMAGE }}:${{ github.sha }}"
+          echo "🌐 External IP: ${IP}"
+          echo "🔗 API        : http://${IP}:8080/api/books"
