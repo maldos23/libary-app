@@ -48,6 +48,12 @@
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-jdbc-mysql</artifactId>
     </dependency>
+    <!-- Cloud SQL Auth Connector: maneja autenticación IAM y encriptación sin SSL manual -->
+    <dependency>
+      <groupId>com.google.cloud.sql</groupId>
+      <artifactId>mysql-socket-factory-connector-j-8</artifactId>
+      <version>1.21.0</version>
+    </dependency>
     <!-- Validation -->
     <dependency>
       <groupId>io.quarkus</groupId>
